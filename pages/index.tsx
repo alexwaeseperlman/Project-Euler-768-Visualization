@@ -1,4 +1,4 @@
-import _, { xor } from "lodash";
+import _, { remove, xor } from "lodash";
 import {
   styled,
   Box,
@@ -13,20 +13,52 @@ import {
 import { useState } from "react";
 import { ArrowLeft, ArrowRight, Backup } from "@mui/icons-material";
 
-function combinations(
+function choose(n: number, k: number): number {
+  let out = 1;
+  for (let i = 1; i <= n; i++) {
+    if (i + n - k <= n && n - k < i + n - k) out *= i + n - k;
+    if (i <= k) out /= i;
+  }
+  return out;
+}
+
+function combinations<T>(
   n: number,
   k: number,
-  fn: (a: number[]) => void,
+  initial: T,
+  add: (a: number, p: T) => void,
+  remove: (a: number, p: T) => void,
+  cond: (p: T) => boolean,
+  ans: (p: number[]) => void,
+  progress: (p: number) => void,
   lo: number = 0,
   pre: number[] = []
 ): void {
-  if (k == 0) {
-    fn(pre);
+  if (k == 0) progress(1);
+  if (k == 0 && cond(initial)) {
+    ans(pre);
     return;
   }
+  let x = 0;
   for (let i = lo; i < n; i++) {
     pre.push(i);
-    combinations(n, k - 1, fn, i + 1, pre);
+    add(i, initial);
+    combinations(
+      n,
+      k - 1,
+      initial,
+      add,
+      remove,
+      cond,
+      ans,
+      (n: number) => {
+        x++;
+        progress(x);
+      },
+      i + 1,
+      pre
+    );
+    remove(i, initial);
     pre.pop();
   }
 }
@@ -209,7 +241,6 @@ function factorOutCyclotomics(
     while (true) {
       let [q, rem] = divide(dividedPoly, cyclotomicPolynomial(i));
       if (rem.length > 0 || rightStrip(dividedPoly).length == 0) break;
-      console.log(q, rem, i);
       dividedPoly = q;
       if (!cyclotomics[i]) cyclotomics[i] = 0;
       cyclotomics[i]++;
@@ -242,15 +273,26 @@ function factorChandelier({ nodes, active }: Chandelier) {
 
 function bruteForceEquivalenceClasses(n: number, k: number) {
   const all: number[][] = [];
-  let count = 0;
-  combinations(n, k, (i: number[]) => {
-    if (count % 10000000 == 0) console.log(i);
-    count++;
-    if (balanced({ nodes: n, active: i })) {
+  combinations(
+    n,
+    k,
+    [0, 0],
+    (x, state) => {
+      state[0] += precos[n][x];
+      state[1] += presin[n][x];
+    },
+    (x, state) => {
+      state[0] -= precos[n][x];
+      state[1] -= presin[n][x];
+    },
+    (state) => Math.abs(state[0]) <= eps && Math.abs(state[1]) <= eps,
+    (i: number[]) => {
       all.push(i.slice());
+    },
+    (p: number) => {
+      if (p % 100000 == 0) console.log(p, choose(n, k), p / choose(n, k));
     }
-  });
-
+  );
   const classes: Record<string, Set<string>> = {};
   for (const i of all) {
     const activePoly: number[] = Array(n + 1).fill(0);

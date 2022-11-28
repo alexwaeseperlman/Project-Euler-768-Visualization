@@ -9,120 +9,22 @@ import {
   FormHelperText,
   Sheet,
   Button,
+  LinearProgress,
+  Select,
+  Option,
 } from "@mui/joy";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeft, ArrowRight, Backup } from "@mui/icons-material";
 
-function choose(n: number, k: number): number {
-  let out = 1;
-  for (let i = 1; i <= n; i++) {
-    if (i + n - k <= n && n - k < i + n - k) out *= i + n - k;
-    if (i <= k) out /= i;
-  }
-  return out;
-}
-
-function combinations<T>(
-  n: number,
-  k: number,
-  initial: T,
-  add: (a: number, p: T) => void,
-  remove: (a: number, p: T) => void,
-  cond: (p: T) => boolean,
-  ans: (p: number[]) => void,
-  progress: (p: number) => void,
-  lo: number = 0,
-  pre: number[] = []
-): void {
-  if (k == 0) progress(1);
-  if (k == 0 && cond(initial)) {
-    ans(pre);
-    return;
-  }
-  let x = 0;
-  for (let i = lo; i < n; i++) {
-    pre.push(i);
-    add(i, initial);
-    combinations(
-      n,
-      k - 1,
-      initial,
-      add,
-      remove,
-      cond,
-      ans,
-      (n: number) => {
-        x++;
-        progress(x);
-      },
-      i + 1,
-      pre
-    );
-    remove(i, initial);
-    pre.pop();
-  }
-}
-
-function isPrime(n: number) {
-  for (let i = 2; i * i <= n; i++) {
-    if (n % i == 0) return false;
-  }
-  return true;
-}
-
-function rightStrip(a: number[]): number[] {
-  for (let i = a.length - 1; i >= -1; i--) {
-    if (i < 0 || a[i] != 0) return a.slice(0, i + 1);
-  }
-  return a;
-}
-
-function divide(a: number[], b: number[]): number[][] {
-  if (a.length < b.length) return [[], rightStrip(a)];
-  const lastTerm = a[a.length - 1] / b[b.length - 1];
-  for (let i = 0; i < b.length; i++) {
-    a[a.length - b.length + i] -= lastTerm * b[i];
-  }
-  const res = divide(a.slice(0, -1), b);
-  res[0].push(lastTerm);
-  return res;
-}
-
-const cyclotomicPolynomials: Record<number, number[]> = {};
-function cyclotomicPolynomial(n: number): number[] {
-  if (cyclotomicPolynomials[n]) return cyclotomicPolynomials[n];
-  if (n == 1) return [-1, 1];
-  if (isPrime(n)) return Array(n).fill(1);
-  else {
-    let poly: number[] = Array(n + 1).fill(0);
-    poly[n] = 1;
-    poly[0] = -1;
-    for (let i = 1; i < n; i++) {
-      if (n % i == 0) {
-        poly = divide(poly, cyclotomicPolynomial(i))[0];
-      }
-    }
-    cyclotomicPolynomials[n] = poly;
-    return poly;
-  }
-}
-
-function polyToString(poly: number[]): string {
-  let out = "";
-  for (let i = poly.length - 1; i >= 0; i--) {
-    if (poly[i]) {
-      if (poly[i] > 0) out += " + ";
-      else if (poly[i] < 0) out += " - ";
-      if (Math.abs(poly[i]) > 1 || i == 0) out += Math.abs(poly[i]);
-      if (i > 1) out += `x^${i}`;
-      else if (i > 0) out += "x";
-    }
-  }
-  out = out.slice(3);
-  return out;
-}
-
-const eps = 1e-5;
+import {
+  divide,
+  cyclotomicPolynomial,
+  rightStrip,
+  polyToString,
+  eps,
+  factorOutCyclotomics,
+  multiply,
+} from "@src/polynomials";
 
 function* factors(n: number) {
   for (let i = 1; i * i <= n; i++) {
@@ -138,22 +40,14 @@ type Chandelier = {
   active: number[];
 };
 
-let presin: number[][] = [[]];
-let precos: number[][] = [[]];
-for (let i = 1; i < 1000; i++) {
-  presin.push(Array(i).fill(0));
-  precos.push(Array(i).fill(0));
-  for (let j = 0; j < i; j++) {
-    presin[i][j] = Math.sin(((2 * j) / i) * Math.PI);
-    precos[i][j] = Math.cos(((2 * j) / i) * Math.PI);
-  }
-}
-
 function getCOM({ nodes, active }: Chandelier) {
   let count = 0;
   let com = [0, 0];
   for (let i of active) {
-    const [x, y] = [presin[nodes][i], precos[nodes][i]];
+    const [x, y] = [
+      Math.sin(((2 * i) / nodes) * Math.PI),
+      Math.cos(((2 * i) / nodes) * Math.PI),
+    ];
     com[0] += x;
     com[1] += y;
     count++;
@@ -230,35 +124,6 @@ function Chandelier(props: {
   return <svg viewBox="-1.5 -1.5 3 3">{circles}</svg>;
 }
 
-function factorOutCyclotomics(
-  p: number[],
-  nodes: number
-): [Record<number, number>, number[], number] {
-  let dividedPoly = p;
-
-  const cyclotomics: Record<number, number> = {};
-  for (let i = 1; i <= nodes; i++) {
-    while (true) {
-      let [q, rem] = divide(dividedPoly, cyclotomicPolynomial(i));
-      if (rem.length > 0 || rightStrip(dividedPoly).length == 0) break;
-      dividedPoly = q;
-      if (!cyclotomics[i]) cyclotomics[i] = 0;
-      cyclotomics[i]++;
-    }
-  }
-
-  let offset = 0;
-  for (; offset < dividedPoly.length; offset++) {
-    if (dividedPoly[offset] != 0) {
-      const p = Array(offset + 1).fill(0);
-      p[offset] = 1;
-      dividedPoly = divide(dividedPoly, p)[0];
-      break;
-    }
-  }
-  return [cyclotomics, dividedPoly, offset];
-}
-
 function factorChandelier({ nodes, active }: Chandelier) {
   const cong: Record<number, number[]> = {};
   for (const i of factors(nodes)) {
@@ -271,51 +136,91 @@ function factorChandelier({ nodes, active }: Chandelier) {
   return cong;
 }
 
-function bruteForceEquivalenceClasses(n: number, k: number) {
-  const all: number[][] = [];
-  combinations(
-    n,
-    k,
-    [0, 0],
-    (x, state) => {
-      state[0] += precos[n][x];
-      state[1] += presin[n][x];
-    },
-    (x, state) => {
-      state[0] -= precos[n][x];
-      state[1] -= presin[n][x];
-    },
-    (state) => Math.abs(state[0]) <= eps && Math.abs(state[1]) <= eps,
-    (i: number[]) => {
-      all.push(i.slice());
-    },
-    (p: number) => {
-      if (p % 100000 == 0) console.log(p, choose(n, k), p / choose(n, k));
-    }
-  );
-  const classes: Record<string, Set<string>> = {};
-  for (const i of all) {
-    const activePoly: number[] = Array(n + 1).fill(0);
-    for (const j of i) activePoly[j] = 1;
-    const [cyclotomics, divided, offset] = factorOutCyclotomics(activePoly, n);
-    let cyclotomicString = "";
-    for (const [n, p] of Object.entries(cyclotomics)) {
-      cyclotomicString += `(${n},${p})`;
-    }
-    if (!classes[cyclotomicString]) classes[cyclotomicString] = new Set();
-    classes[cyclotomicString].add(polyToString(divided));
+const solutions: Record<
+  string,
+  {
+    progress: number;
+    result: Record<string, Record<string, number>> | null;
+    worker: Worker;
   }
+> = {};
+function useEquivalenceClasses(
+  n: number,
+  k: number
+): [number, Record<string, Record<string, number>> | null] {
+  const key = `${n},${k}`;
+  const [progress, setProgress] = useState<number>(
+    solutions[key]?.progress || 0
+  );
+  const [result, setResult] = useState<Record<
+    string,
+    Record<string, number>
+  > | null>(solutions[key]?.result || null);
+  useEffect(() => {
+    if (!solutions[key]) {
+      solutions[key] = {
+        progress: 0,
+        result: null,
+        worker: new Worker(new URL("@src/worker.ts", import.meta.url)),
+      };
+      solutions[key].worker.postMessage([n, k]);
+      solutions[key].worker.addEventListener("message", (ev) => {
+        solutions[key].progress = ev.data.progress;
+        solutions[key].result = ev.data.result;
+      });
+    }
+    const listener = (ev: MessageEvent<any>) => {
+      setProgress(ev.data.progress);
+      setResult(ev.data.result);
+    };
 
-  return classes;
+    setProgress(solutions[key].progress);
+    setResult(solutions[key].result);
+
+    solutions[key].worker.addEventListener("message", listener);
+    return () => solutions[key].worker.removeEventListener("message", listener);
+  }, [n, k, key]);
+  return [progress, result];
 }
 
 export default function Home() {
   const [nodes, setNodes] = useState<number>(30);
   const [active, setActive] = useState<number[]>([]);
+  const [targetActive, setTargetActive] = useState<number>(1);
   const cong = factorChandelier({ nodes, active });
   const activePoly: number[] = Array(nodes + 1).fill(0);
   for (const i of active) activePoly[i] = 1;
 
+  const [progress, classes] = useEquivalenceClasses(nodes, targetActive);
+
+  const [selectedClass, setSelectedClass] = useState<string>("");
+
+  function updatePoly(newValue: string, selectedClass: string) {
+    console.log(newValue, selectedClass);
+    if (!selectedClass || !newValue) return;
+    const poly = newValue?.split(",").map((n) => parseInt(n));
+    const prod = (selectedClass as string)
+      .split(":")
+      .map((s) => {
+        return s.split(",").map((n) => parseInt(n));
+      })
+      .flatMap(([n, p]) => {
+        return Array(p).fill(cyclotomicPolynomial(n));
+      })
+      .concat([poly])
+      .reduce(
+        (a, b) => {
+          console.log(a, b, multiply(a, b));
+          return multiply(a, b);
+        },
+        [1]
+      );
+    console.log(prod);
+    const out = [];
+    for (let i = 0; i < prod.length; i++) if (prod[i]) out.push(i);
+    console.log(out);
+    setActive(out);
+  }
   const [cyclotomics, dividedPoly, offset] = factorOutCyclotomics(
     activePoly,
     nodes
@@ -334,7 +239,16 @@ export default function Home() {
     return next;
   };
 
-  const symmetries = [];
+  useEffect(() => {
+    setTargetActive(active.length);
+    if (classes) {
+      setSelectedClass(
+        Object.entries(cyclotomics)
+          .map(([k, v]) => `${k},${v}`)
+          .join(":")
+      );
+    }
+  }, [active.length, classes, cyclotomics]);
 
   return (
     <Box
@@ -347,7 +261,7 @@ export default function Home() {
     >
       <Box
         sx={{
-          minWidth: "450px",
+          width: "550px",
           padding: "20px",
         }}
       >
@@ -383,6 +297,100 @@ export default function Home() {
             Right
           </Button>
         </Box>
+
+        <FormControl>
+          <FormLabel>Number of active candles</FormLabel>
+          <Input
+            type="number"
+            value={targetActive}
+            sx={{
+              flexGrow: 1,
+            }}
+            onChange={(val) => {
+              if (
+                parseInt(val.target.value) > 0 &&
+                parseInt(val.target.value) <= nodes
+              )
+                setTargetActive(parseInt(val.target.value));
+            }}
+          />
+        </FormControl>
+        {classes ? (
+          <Box>
+            Found{" "}
+            {Object.values(classes)
+              .map((r) => Object.values(r).reduce((x, y) => x + y, 0))
+              .reduce((x, y) => x + y, 0)}{" "}
+            balanced arrangements
+            <Select
+              value={selectedClass}
+              placeholder="Select a class of arrangement"
+              onChange={(v, newValue) => {
+                if (newValue) setSelectedClass(newValue);
+
+                if (newValue && classes && classes[newValue]) {
+                  updatePoly(Object.keys(classes[newValue])[0], newValue);
+                }
+              }}
+              componentsProps={{
+                listbox: {
+                  sx: {
+                    maxHeight: "500px",
+                    overflow: "auto",
+                  },
+                },
+              }}
+            >
+              {Object.keys(classes).map((key) => (
+                <Option value={key} key={key}>
+                  {key}
+                </Option>
+              ))}
+            </Select>
+            <Select
+              value={dividedPoly.join(",")}
+              placeholder="Select an arrangement"
+              onChange={(e, newValue) => {
+                if (newValue && selectedClass)
+                  updatePoly(newValue, selectedClass);
+              }}
+              componentsProps={{
+                listbox: {
+                  sx: {
+                    maxHeight: "500px",
+                    overflow: "auto",
+                  },
+                },
+              }}
+            >
+              {Object.keys(classes[selectedClass ?? ""] ?? {}).map((key) => (
+                <Option value={key} key={key}>
+                  {polyToString(key.split(",").map((n) => parseInt(n)))} (
+                  {classes[selectedClass ?? ""][key]} symmetries)
+                </Option>
+              ))}
+            </Select>
+            <Button
+              onClick={() => {
+                if (classes && selectedClass)
+                  updatePoly(
+                    Object.keys(classes[selectedClass]).sort()[
+                      (Object.keys(classes[selectedClass]).indexOf(
+                        dividedPoly.join(",")
+                      ) +
+                        1) %
+                        Object.keys(classes[selectedClass]).length
+                    ],
+                    selectedClass
+                  );
+              }}
+            >
+              Cycle selected arrangement
+            </Button>
+          </Box>
+        ) : (
+          <LinearProgress determinate value={progress * 100} />
+        )}
       </Box>
       <Box
         sx={{

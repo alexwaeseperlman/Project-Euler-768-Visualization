@@ -375,9 +375,9 @@ export default function Home() {
                 if (classes && selectedClass)
                   updatePoly(
                     Object.keys(classes[selectedClass]).sort()[
-                      (Object.keys(classes[selectedClass]).indexOf(
-                        dividedPoly.join(",")
-                      ) +
+                      (Object.keys(classes[selectedClass])
+                        .sort()
+                        .indexOf(dividedPoly.join(",")) +
                         1) %
                         Object.keys(classes[selectedClass]).length
                     ],
@@ -387,9 +387,29 @@ export default function Home() {
             >
               Cycle selected arrangement
             </Button>
+            <Button
+              onClick={() => {
+                if (classes && selectedClass) {
+                  const newValue =
+                    Object.keys(classes).sort()[
+                      (Object.keys(classes).sort().indexOf(selectedClass) + 1) %
+                        Object.keys(classes).length
+                    ];
+                  setSelectedClass(newValue);
+                  if (newValue && classes && classes[newValue]) {
+                    updatePoly(Object.keys(classes[newValue])[0], newValue);
+                  }
+                }
+              }}
+            >
+              Cycle selected classification
+            </Button>
           </Box>
         ) : (
-          <LinearProgress determinate value={progress * 100} />
+          <Box>
+            <LinearProgress determinate value={progress * 100} />
+            Generating classifications...
+          </Box>
         )}
       </Box>
       <Box
